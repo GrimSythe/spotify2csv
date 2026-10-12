@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import spotipy
+from spotipy.cache_handler import CacheFileHandler
 from spotipy.exceptions import SpotifyOauthError
 from spotipy.oauth2 import SpotifyPKCE
 
@@ -173,7 +174,7 @@ def make_client(
         client_id=client_id,
         redirect_uri=redirect_uri,
         scope=SCOPE,
-        cache_path=str(cache_path),
+        cache_handler=CacheFileHandler(cache_path=str(cache_path)),
         open_browser=open_browser,
     )
     return spotipy.Spotify(auth_manager=auth_manager)

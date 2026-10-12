@@ -68,6 +68,7 @@ def test_export_liked_songs_writes_all_pages(tmp_path):
 
 def test_main_requires_client_id(monkeypatch, capsys):
     monkeypatch.delenv("SPOTIPY_CLIENT_ID", raising=False)
+    monkeypatch.setattr("spotify2csv.cli.load_saved_client_id", lambda: None)
 
     assert main([]) == 2
     assert "SPOTIPY_CLIENT_ID" in capsys.readouterr().err
@@ -91,6 +92,7 @@ def test_banner_contains_brand_credit_and_links():
 
 def test_no_banner_suppresses_interface(monkeypatch, capsys):
     monkeypatch.delenv("SPOTIPY_CLIENT_ID", raising=False)
+    monkeypatch.setattr("spotify2csv.cli.load_saved_client_id", lambda: None)
 
     assert main(["--no-banner"]) == 2
     output = capsys.readouterr()
@@ -103,6 +105,7 @@ def test_interactive_run_prompts_for_client_id(monkeypatch):
             return True
 
     monkeypatch.delenv("SPOTIPY_CLIENT_ID", raising=False)
+    monkeypatch.setattr("spotify2csv.cli.load_saved_client_id", lambda: None)
     monkeypatch.setattr("sys.stdin", InteractiveInput())
     monkeypatch.setattr("builtins.input", lambda prompt: "prompted-client-id")
 
