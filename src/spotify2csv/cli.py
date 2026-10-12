@@ -4,21 +4,26 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 import shutil
 import sys
+import webbrowser
 from pathlib import Path
 from typing import Any
 
 import spotipy
+from spotipy.exceptions import SpotifyOauthError
 from spotipy.oauth2 import SpotifyPKCE
 
 from . import __version__
 
 DEFAULT_REDIRECT_URI = "http://127.0.0.1:8888/callback"
 DEFAULT_OUTPUT = Path("liked_songs.csv")
-DEFAULT_CACHE = Path(".spotify_cache")
+DEFAULT_CACHE = Path(".spotify_cache-pkce")
+DEFAULT_CONFIG = Path(".spotify2csv.json")
 SCOPE = "user-library-read"
+DASHBOARD_URL = "https://developer.spotify.com/dashboard"
 REPOSITORY_URL = "https://github.com/GrimSythe/spotify2csv"
 PROFILE_URL = "https://github.com/GrimSythe"
 
@@ -88,7 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--cache",
         type=Path,
         default=DEFAULT_CACHE,
-        help="OAuth token cache path (default: .spotify_cache)",
+        help="OAuth token cache path (default: .spotify_cache-pkce)",
+    )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Open the Spotify dashboard and save a Client ID for future runs",
     )
     parser.add_argument(
         "--no-browser",
@@ -102,6 +112,55 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
+
+
+def load_saved_client_id(config_path: Path = DEFAULT_CONFIG) -> str | None:
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    client_id = data.get("client_id") if isinstance(data, dict) else None
+    return client_id.strip() if isinstance(client_id, str) and client_id.strip() else None
+
+
+def save_client_id(client_id: str, config_path: Path = DEFAULT_CONFIG) -> None:
+    temporary = config_path.with_suffix(config_path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps({"client_id": client_id}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(config_path)
+
+
+def run_setup(config_path: Path = DEFAULT_CONFIG) -> int:
+    print("\nSpotify app setup")
+    print("-----------------")
+    print("1. Create or open your app in the Spotify Developer Dashboard.")
+    print(f"2. Add this exact Redirect URI: {DEFAULT_REDIRECT_URI}")
+    print("3. Save the app settings and copy its Client ID (not the Client Secret).")
+    print(f"\nOpening {DASHBOARD_URL}\n")
+    webbrowser.open(DASHBOARD_URL)
+
+    try:
+        client_id = input("Paste your Spotify app Client ID: ").strip()
+    except EOFError:
+        client_id = ""
+    if not client_id:
+        print("Setup cancelled; no Client ID was saved.", file=sys.stderr)
+        return 2
+    if any(character.isspace() for character in client_id):
+        print("That Client ID contains spaces. Copy only the Client ID value.", file=sys.stderr)
+        return 2
+
+    try:
+        save_client_id(client_id, config_path)
+    except OSError as error:
+        print(f"Could not save the Client ID: {error}", file=sys.stderr)
+        return 1
+
+    print(f"\nSetup complete. Client ID saved locally in {config_path.resolve()}")
+    print("Run Spotify2CSV to sign in and export your library.")
+    return 0
 
 
 def make_client(
@@ -159,7 +218,16 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if not args.no_banner:
         print(render_banner())
-    if not args.client_id:
+    if args.setup:
+        return run_setup()
+
+    client_id = args.client_id or load_saved_client_id()
+    if not client_id and sys.stdin.isatty():
+        try:
+            client_id = input("\nPaste your Spotify app Client ID: ").strip()
+        except EOFError:
+            client_id = ""
+    if not client_id:
         print(
             "Error: set SPOTIPY_CLIENT_ID or pass --client-id. "
             "See README.md for setup instructions.",
@@ -169,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         client = make_client(
-            args.client_id,
+            client_id,
             args.redirect_uri,
             args.cache,
             open_browser=not args.no_browser,
@@ -178,6 +246,13 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\nCancelled; the existing output file was not changed.", file=sys.stderr)
         return 130
+    except SpotifyOauthError as error:
+        print(
+            "Spotify authentication failed. Run `spotify2csv --setup` and confirm "
+            f"that {args.redirect_uri} is registered exactly.\nDetails: {error}",
+            file=sys.stderr,
+        )
+        return 1
     except spotipy.SpotifyException as error:
         print(f"Spotify API error: {error}", file=sys.stderr)
         return 1

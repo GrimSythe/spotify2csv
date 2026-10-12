@@ -1,6 +1,8 @@
 # OAuth credentials and generated exports
 .spotify_cache
 .spotify_cache-*
+.spotify2csv.json
+.spotify2csv.json.tmp
 liked_songs.csv
 *.csv.tmp
 .env

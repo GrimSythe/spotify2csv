@@ -1,12 +1,15 @@
 import csv
+import json
 
 from spotify2csv.cli import (
     PROFILE_URL,
     REPOSITORY_URL,
     build_parser,
     export_liked_songs,
+    load_saved_client_id,
     main,
     render_banner,
+    save_client_id,
 )
 
 
@@ -74,6 +77,7 @@ def test_default_redirect_uri_is_loopback(monkeypatch):
     monkeypatch.delenv("SPOTIPY_REDIRECT_URI", raising=False)
 
     assert build_parser().parse_args([]).redirect_uri == "http://127.0.0.1:8888/callback"
+    assert build_parser().parse_args([]).cache.name == ".spotify_cache-pkce"
 
 
 def test_banner_contains_brand_credit_and_links():
@@ -91,3 +95,36 @@ def test_no_banner_suppresses_interface(monkeypatch, capsys):
     assert main(["--no-banner"]) == 2
     output = capsys.readouterr()
     assert "Designed by GrimSythe" not in output.out
+
+
+def test_interactive_run_prompts_for_client_id(monkeypatch):
+    class InteractiveInput:
+        def isatty(self):
+            return True
+
+    monkeypatch.delenv("SPOTIPY_CLIENT_ID", raising=False)
+    monkeypatch.setattr("sys.stdin", InteractiveInput())
+    monkeypatch.setattr("builtins.input", lambda prompt: "prompted-client-id")
+
+    captured = {}
+
+    def fake_client(client_id, redirect_uri, cache_path, open_browser=True):
+        captured["client_id"] = client_id
+        return FakeSpotify()
+
+    monkeypatch.setattr("spotify2csv.cli.make_client", fake_client)
+    monkeypatch.setattr("spotify2csv.cli.export_liked_songs", lambda client, output: 2)
+
+    assert main(["--no-banner"]) == 0
+    assert captured["client_id"] == "prompted-client-id"
+
+
+def test_saved_client_id_round_trip(tmp_path):
+    config = tmp_path / ".spotify2csv.json"
+
+    save_client_id("saved-client-id", config)
+
+    assert load_saved_client_id(config) == "saved-client-id"
+    assert json.loads(config.read_text(encoding="utf-8")) == {
+        "client_id": "saved-client-id"
+    }
