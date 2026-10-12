@@ -1,0 +1,16 @@
+# OAuth credentials and generated exports
+.spotify_cache
+.spotify_cache-*
+liked_songs.csv
+*.csv.tmp
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
